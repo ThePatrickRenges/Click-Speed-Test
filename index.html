@@ -1,0 +1,304 @@
+<!DOCTYPE html>
+<html lang="de">
+<head>
+    <meta charset="UTF-8">
+    <title>Click-Speed-Test</title>
+    <style>
+        body {
+            font-family: sans-serif;
+            margin: 0;
+            padding: 0;
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            min-height: 100vh;
+            background: #111827;
+            color: #f9fafb;
+        }
+
+        .container {
+            background: #1f2933;
+            padding: 24px;
+            border-radius: 12px;
+            max-width: 600px;
+            width: 100%;
+            box-sizing: border-box;
+        }
+
+        h1 {
+            text-align: center;
+            margin-top: 0;
+        }
+
+        .controls {
+            display: flex;
+            flex-direction: column;
+            gap: 12px;
+            margin-bottom: 16px;
+        }
+
+        input {
+            padding: 8px;
+            border-radius: 6px;
+            border: 1px solid #4b5563;
+            background: #111827;
+            color: #f9fafb;
+        }
+
+        button {
+            padding: 8px 12px;
+            border-radius: 6px;
+            border: none;
+            background: #2563eb;
+            color: white;
+            cursor: pointer;
+            font-weight: bold;
+        }
+
+        .stats {
+            display: grid;
+            grid-template-columns: repeat(4, 1fr);
+            gap: 8px;
+        }
+
+        .stat {
+            background: #111827;
+            border-radius: 8px;
+            padding: 8px;
+            text-align: center;
+        }
+
+        .click-area {
+            margin-top: 16px;
+            padding: 24px;
+            border-radius: 12px;
+            border: 2px dashed #4b5563;
+            text-align: center;
+            user-select: none;
+        }
+
+        .click-area.active {
+            border-color: #10b981;
+            background: #022c22;
+        }
+
+        .rating {
+            text-align: center;
+            margin-top: 16px;
+            color: #d1d5db;
+        }
+
+        .highscores {
+            margin-top: 24px;
+            font-size: 14px;
+        }
+
+        .highscores table {
+            width: 100%;
+            border-collapse: collapse;
+        }
+
+        .highscores th, .highscores td {
+            border-bottom: 1px solid #374151;
+            padding: 6px;
+            text-align: left;
+        }
+
+    </style>
+</head>
+<body>
+
+<div class="container">
+    <h1>Click-Speed-Test</h1>
+
+    <div class="controls">
+        <input id="username" type="text" placeholder="Dein Name">
+        <div>
+            <label>Dauer (Sekunden):</label>
+            <input id="duration" type="number" min="1" max="60" value="5">
+        </div>
+        <button id="startBtn">Test starten</button>
+    </div>
+
+    <div class="stats">
+        <div class="stat">
+            <div>Klicks</div>
+            <div id="clickCount">0</div>
+        </div>
+        <div class="stat">
+            <div>Zeit übrig</div>
+            <div id="timeLeft">0.0</div>
+        </div>
+        <div class="stat">
+            <div>CPS</div>
+            <div id="cps">0.00</div>
+        </div>
+        <div class="stat">
+            <div>Status</div>
+            <div id="status">Bereit</div>
+        </div>
+    </div>
+
+    <div id="clickArea" class="click-area">
+        Klicke hier schnell, sobald der Test läuft.
+    </div>
+
+    <div id="rating" class="rating">Keine Bewertung</div>
+
+    <div class="highscores">
+        <h3>Highscores (Local JSON)</h3>
+        <div id="scoreList"></div>
+    </div>
+</div>
+
+<script>
+(function () {
+    var startBtn = document.getElementById("startBtn");
+    var usernameInput = document.getElementById("username");
+    var durationInput = document.getElementById("duration");
+
+    var clickCountElem = document.getElementById("clickCount");
+    var timeLeftElem = document.getElementById("timeLeft");
+    var cpsElem = document.getElementById("cps");
+    var statusElem = document.getElementById("status");
+    var clickArea = document.getElementById("clickArea");
+    var ratingElem = document.getElementById("rating");
+    var scoreListElem = document.getElementById("scoreList");
+
+    var running = false;
+    var clickCount = 0;
+    var duration = 5;
+    var timeLeft = 0;
+    var startTime = 0;
+
+    function loadScores() {
+        return JSON.parse(localStorage.getItem("userScores") || "[]");
+    }
+
+    function saveScores(list) {
+        localStorage.setItem("userScores", JSON.stringify(list));
+    }
+
+    function showScores() {
+        var list = loadScores();
+
+        if (list.length === 0) {
+            scoreListElem.innerHTML = "Keine Daten gespeichert.";
+            return;
+        }
+
+        var html = "<table><tr><th>Name</th><th>CPS</th><th>Klicks</th><th>Datum</th></tr>";
+        list.forEach(function (entry) {
+            html += "<tr><td>" + entry.user + "</td><td>" +
+                    entry.cps.toFixed(2) + "</td><td>" +
+                    entry.clicks + "</td><td>" +
+                    new Date(entry.time).toLocaleString() +
+                    "</td></tr>";
+        });
+        html += "</table>";
+
+        scoreListElem.innerHTML = html;
+    }
+
+    function getRating(cps) {
+        if (cps < 3) return "Sehr langsam";
+        if (cps < 6) return "Durchschnittlich";
+        if (cps < 9) return "Schnell";
+        if (cps < 12) return "Sehr schnell";
+        return "Extrem schnell";
+    }
+
+    function startTest() {
+        var username = usernameInput.value.trim();
+        if (username === "") {
+            alert("Bitte gib deinen Namen ein.");
+            return;
+        }
+
+        duration = parseInt(durationInput.value, 10);
+        if (isNaN(duration) || duration <= 0) duration = 5;
+
+        running = true;
+        clickCount = 0;
+        startTime = performance.now();
+        timeLeft = duration;
+
+        clickArea.classList.add("active");
+        startBtn.disabled = true;
+        durationInput.disabled = true;
+        usernameInput.disabled = true;
+        statusElem.textContent = "Läuft";
+
+        requestAnimationFrame(tick);
+    }
+
+    function stopTest() {
+        running = false;
+        clickArea.classList.remove("active");
+        startBtn.disabled = false;
+        durationInput.disabled = false;
+        usernameInput.disabled = false;
+        timeLeftElem.textContent = "0.0";
+        statusElem.textContent = "Fertig";
+
+        var elapsed = duration;
+        var cps = clickCount / elapsed;
+        cpsElem.textContent = cps.toFixed(2);
+
+        ratingElem.textContent = "Bewertung: " + getRating(cps);
+
+        var list = loadScores();
+        list.push({
+            user: usernameInput.value.trim(),
+            cps: cps,
+            clicks: clickCount,
+            time: new Date().toISOString()
+        });
+
+        list.sort(function (a, b) {
+            return b.cps - a.cps;
+        });
+
+        list = list.slice(0, 20);
+
+        saveScores(list);
+        showScores();
+    }
+
+    function tick() {
+        if (!running) return;
+
+        var now = performance.now();
+        var elapsedSeconds = (now - startTime) / 1000;
+        timeLeft = Math.max(0, duration - elapsedSeconds);
+
+        timeLeftElem.textContent = timeLeft.toFixed(1);
+        cpsElem.textContent = (clickCount / Math.max(elapsedSeconds, 0.001)).toFixed(2);
+
+        if (timeLeft <= 0) {
+            stopTest();
+        } else {
+            requestAnimationFrame(tick);
+        }
+    }
+
+    startBtn.addEventListener("click", function () {
+        clickCountElem.textContent = "0";
+        cpsElem.textContent = "0.00";
+        ratingElem.textContent = "Keine Bewertung";
+        startTest();
+    });
+
+    clickArea.addEventListener("click", function () {
+        if (!running) return;
+        clickCount++;
+        clickCountElem.textContent = clickCount;
+    });
+
+    showScores();
+})();
+</script>
+
+</body>
+</html>
+
